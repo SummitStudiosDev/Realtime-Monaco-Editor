@@ -1,0 +1,16 @@
+{
+  "name": "private-replit",
+  "version": "0.0.1",
+  "description": "A self-hostable private collorative code space inspired by Repl.it!",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "SummitStudiosDEV",
+  "license": "NCSA",
+  "dependencies": {
+    "ejs": "^3.1.6",
+    "express": "^4.17.1",
+    "socket.io": "^4.1.3"
+  }
+}

@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>Monaco editor</title>
+
+<script src="https://unpkg.com/jquery@3.6.0/dist/jquery.js"></script>
+
+		<script src = "https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+		<script>
+			var socket = io();
+		</script>
+	</head>
+	<body>
+		<link rel="stylesheet" data-name="vs/editor/editor.main" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.20.0/min/vs/editor/editor.main.min.css">
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.26.1/min/vs/loader.min.js"></script>
+		<div id="container" style="height:400px;border:1px solid black;"></div>
+		<script>
+		require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.26.1/min/vs' }});
+		require(["vs/editor/editor.main"], () => {
+		  let editor = monaco.editor.create(document.getElementById('container'), {
+			value: 
+`function x() {
+	console.log("Hello world!");
+}`,
+			language: 'javascript',
+			theme: 'vs',
+		  });
+		  
+			let model = editor.getModel();
+			var ignoreNextChange  = false;
+			
+			editor.onDidChangeModelContent((event) => {
+				if(ignoreNextChange){
+					ignoreNextChange=false;
+				}else{
+					console.log("content change");	
+					console.log(event);
+					let changes = event.changes;
+					socket.emit('content_change',{"roomid":"0","changes":changes});
+					//model.applyEdits(changes);
+				}
+			});
+
+
+			editor.onDidChangeCursorPosition((e) => {
+				console.log("cursour change");	
+				console.log(e);
+				socket.emit("cursorPos",{'pos':e.position,'room':'0'});
+			});
+
+
+			editor.onDidChangeCursorSelection((e) => {
+				console.log("selection change");	
+				console.log(e);
+				let a = e.selection;
+				if(!(a.startColumn == a.endColumn && a.startLineNumber == a.endLineNumber)){
+					console.log("highlighted something");
+					socket.emit("selectedPos",{'selection':e.selection,'room':'0'});
+				}else{
+					console.log("nohighlighted something");
+					socket.emit("selectedPos",{'selection':null,'room':'0'});
+				}
+			});
+
+
+			socket.on('content_change', (changes) => {
+				ignoreNextChange=true;
+				model.applyEdits(changes);
+				console.log(changes);
+			});
+			
+			socket.on('newJoin', (socketId) => {
+				console.log("Got a new join!");
+				setTimeout(function(){ //so page can load
+					socket.emit("setValue",{"socket":socketId,"value":model.getValue()});
+				},500);
+			});
+			
+			socket.on('setValue', (data) => {
+				console.log("requested set value to ");
+				console.log(data);
+				ignoreNextChange=true;
+				model.setValue(data);
+			});
+
+			var cursors = {};
+			var colors = {};
+			var selections = {};
+			var decorations = [];
+			function renderDecorations(){
+				let r=[];
+				for (var p in cursors) {
+					if( cursors.hasOwnProperty(p) ) {
+						let curr = cursors[p];
+						r.push({ range: new monaco.Range(curr.lineNumber, curr.column, curr.lineNumber, curr.column), options: { className: ' applyColorToThis my-cursor backgroundC-'+colors[p]}});
+					} 
+				}
+				for (var p in selections) {
+					if( selections.hasOwnProperty(p) ) {
+						let curr = selections[p];
+						if(curr!=null){
+							r.push({
+								range: new monaco.Range(curr.startLineNumber, curr.startColumn, curr.endLineNumber, curr.endColumn),
+									options: {
+										inlineClassName: 'applyColorToThis backgroundC-'+colors[p]
+									}
+								}
+							);
+						}
+					} 
+				}
+				
+/*
+				r.push({
+					range: new monaco.Range(2,1,2,24), options: { inlineClassName: 'myInlineDecoration' }
+				})
+*/
+				
+				console.log(r);
+				decorations=editor.deltaDecorations(decorations, r);
+				setTimeout(function(){
+					applyC();
+					setTimeout(function(){
+						applyC();
+					},150);
+				},150);
+  			}
+			
+
+			socket.on('cursorPos', (data) => {
+				cursors[data.name]=data.pos;
+				if( !colors.hasOwnProperty(data.name) ) {
+					colors[data.name]=Math.floor(Math.random()*16777215).toString(16);
+				}
+				
+				console.log(cursors);
+				console.log(colors);
+				renderDecorations();
+			});
+			socket.on('selectedPos', (data) => {
+				console.log("selection of "+data.name+" is at "+JSON.stringify(data.selection));
+				selections[data.name]=data.selection;
+				renderDecorations();
+			});
+			socket.on('leave', (data) => {
+				try{
+					delete cursors[data];
+				}catch{	
+				}
+				try{
+					delete colors[data];
+				}catch{	
+				}
+				try{
+					delete selections[data];
+				}catch{	
+				}
+				console.log(cursors);
+				renderDecorations();
+			});
+			
+
+			
+		});
+
+
+
+		//join room
+		socket.on('connect', function() {
+		   socket.emit('join', '0');
+		});
+
+		function applyC() {
+			//console.log("Apply colors");
+		  var x = document.getElementsByClassName("applyColorToThis");
+		  console.log(x);
+		  for (var i = 0; i < x.length; i++) {
+			x[i].className.split(" ").forEach(function(item){
+				if(item.indexOf("backgroundC-")!=-1){
+					//is inside
+					let color = item.replace("backgroundC-","");
+					//console.log(color);
+					x[i].style.background = "#"+color;
+					//console.log(x[i]);
+				}
+			});
+		  }
+		}
+
+		</script>
+
+<style>
+.my-cursor {
+	background: black;
+    width: 2px !important;
+}
+
+</style>
+
+	</body>
+</html>
